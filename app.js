@@ -1,5 +1,5 @@
 'use strict';
-/* WerkStandaard Team v2 – cloudversie met Supabase RLS en privé Storage. */
+/* WerkStandaard Team v3 – team verwijderen en optionele gebruikersnaam-aanmelding. */
 const $ = id => document.getElementById(id);
 const uuid = () => crypto.randomUUID();
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
@@ -25,7 +25,18 @@ function memberName(id){if(!id)return 'Niet toegewezen';return members.find(m=>m
 function statusLabel(status){return ({todo:'Open',doing:'In uitvoering',done:'Afgerond'})[status]||'Open';}
 function score(task){const checks=Array.isArray(task.checks)?task.checks:[];const count=checks.filter(c=>c.done===true).length;return {done:count,total:checks.length,pct:checks.length?Math.round(count/checks.length*100):0};}
 function selectedTeamName(){return localStorage.getItem('ws_team_id');}
-function displayName(){return String(user?.user_metadata?.display_name||localStorage.getItem('ws_display_name')||user?.email?.split('@')[0]||'Medewerker').slice(0,70);}
+function displayName(){return String(user?.user_metadata?.display_name||localStorage.getItem('ws_display_name')||user?.user_metadata?.username||user?.email?.split('@')[0]||'Medewerker').slice(0,70);}
+// Supabase Auth gebruikt intern nog een e-mail-ID, maar de medewerker vult alleen
+// een gebruikersnaam in. example.com is een gereserveerd voorbeelddomein.
+function resolveLoginIdentifier(raw){
+ const value=String(raw||'').trim().toLowerCase();
+ if(value.includes('@')){
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))throw new Error('Vul een geldig e-mailadres in.');
+  return {email:value,username:null};
+ }
+ if(!/^[a-z0-9][a-z0-9_-]{2,31}$/.test(value))throw new Error('Een gebruikersnaam bestaat uit 3–32 letters, cijfers, - of _. Begin met een letter of cijfer.');
+ return {email:`ws-${value}@example.com`,username:value};
+}
 async function start(){
  const config=window.WERKSTANDAARD_CONFIG||{};
  if(!/^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/i.test((config.supabaseUrl||'').trim()) || !(config.publishableKey||'').trim()){showTop('setupView');return;}
@@ -38,15 +49,28 @@ async function start(){
   if('serviceWorker' in navigator && location.protocol==='https:')navigator.serviceWorker.register('./sw.js').catch(console.warn);
  }catch(error){friendlyError(error);showAuth();}
 }
-function showAuth(){showTop('authView');$('authPass').value='';}
-function toggleAuth(){authMode=authMode==='login'?'register':'login';$('authSubmit').textContent=authMode==='login'?'Inloggen':'Registreren';$('switchAuth').textContent=authMode==='login'?'Nog geen account? Registreren':'Heb je een account? Inloggen';$('authName').closest('label').classList.toggle('hidden',authMode!=='register');$('authName').required=authMode==='register';$('authPass').autocomplete=authMode==='register'?'new-password':'current-password';}
+function showAuth(){showTop('authView');$('authPass').value='';$('authIdentifier').value='';}
+function toggleAuth(){
+ authMode=authMode==='login'?'register':'login';
+ $('authSubmit').textContent=authMode==='login'?'Inloggen':'Registreren';
+ $('switchAuth').textContent=authMode==='login'?'Nog geen account? Registreren':'Heb je een account? Inloggen';
+ $('authName').closest('label').classList.toggle('hidden',authMode!=='register');
+ $('authName').required=authMode==='register';
+ $('authPass').autocomplete=authMode==='register'?'new-password':'current-password';
+ $('authHelp').textContent=authMode==='register'
+  ?'Kies bij voorkeur een unieke gebruikersnaam en een sterk wachtwoord (minimaal 10 tekens). Geen echt e-mailadres nodig. Vraag daarna toegang tot je team.'
+  :'Inloggen kan met gebruikersnaam of met je bestaande e-mailadres. Een account zonder echt e-mailadres heeft geen e-mailwachtwoordherstel.';
+} 
 async function submitAuth(e){e.preventDefault();const btn=$('authSubmit');busy(btn,true,'Even controleren…');try{
- const email=$('authEmail').value.trim(),password=$('authPass').value;
+ const {email,username}=resolveLoginIdentifier($('authIdentifier').value),password=$('authPass').value;
  if(authMode==='register'){
   const name=$('authName').value.trim();if(name.length<2)throw new Error('Vul je naam in (minstens twee tekens).');
+  if(password.length<10)throw new Error('Kies voor nieuwe accounts een wachtwoord met minimaal 10 tekens.');
   localStorage.setItem('ws_display_name',name);
-  const result=withResult(await client.auth.signUp({email,password,options:{data:{display_name:name},emailRedirectTo:location.origin+location.pathname}}));
-  if(result.session){user=result.user;await workspace();}else{toast('Account gemaakt. Bevestig eerst je e-mailadres en log daarna in.');toggleAuth();}
+  const result=withResult(await client.auth.signUp({email,password,options:{data:{display_name:name,...(username?{username}:{})},emailRedirectTo:location.origin+location.pathname}}));
+  if(result.session){user=result.user;await workspace();}
+  else if(username){throw new Error('Supabase vraagt nog e-mailbevestiging. Zet Authentication → Providers → Email → Confirm Email uit om gebruikersnaamaccounts te registreren.');}
+  else{toast('Account gemaakt. Bevestig eerst je e-mailadres en log daarna in.');toggleAuth();}
  }else{
   const result=withResult(await client.auth.signInWithPassword({email,password}));user=result.user;await workspace();
  }
@@ -57,9 +81,11 @@ async function workspace(autoOpen=true){
  try{
   const rows=withResult(await client.from('ws_memberships').select('team_id,user_id,display_name,role,status').eq('user_id',user.id));
   const active=rows.filter(m=>m.status==='active');let teamsById={};
-  if(active.length){const teamRows=withResult(await client.from('ws_teams').select('id,name').in('id',active.map(m=>m.team_id)));teamsById=Object.fromEntries(teamRows.map(t=>[t.id,t]));}
+  if(active.length){const teamRows=withResult(await client.from('ws_teams').select('id,name,created_by,deleting_at').in('id',active.map(m=>m.team_id)));teamsById=Object.fromEntries(teamRows.map(t=>[t.id,t]));}
   $('teamList').innerHTML=rows.length?rows.map(m=>{
-   const t=teamsById[m.team_id];return `<div class="team-choice"><div><h3>${escapeHTML(t?.name||'Toegangsaanvraag')}</h3><p>${m.status==='pending'?'Wacht op goedkeuring door beheerder':m.role==='admin'?'Beheerder':'Medewerker'}</p></div>${m.status==='active'?`<button type="button" class="button primary" data-open-team="${escapeHTML(m.team_id)}">Open team</button>`:'<span class="chip doing">In afwachting</span>'}</div>`;
+   const t=teamsById[m.team_id];
+   const action=t?.deleting_at?(t.created_by===user.id?`<button type="button" class="button danger" data-resume-delete="${escapeHTML(m.team_id)}">Verwijderen afronden</button>`:'<span class="chip doing">Wordt verwijderd</span>'):m.status==='active'?`<button type="button" class="button primary" data-open-team="${escapeHTML(m.team_id)}">Open team</button>`:'<span class="chip doing">In afwachting</span>';
+   return `<div class="team-choice"><div><h3>${escapeHTML(t?.name||'Toegangsaanvraag')}</h3><p>${t?.deleting_at?'Verwijderen nog niet voltooid':m.status==='pending'?'Wacht op goedkeuring door beheerder':m.role==='admin'?'Beheerder':'Medewerker'}</p></div>${action}</div>`;
   }).join(''):'<div class="empty">Je bent nog niet aangesloten bij een team. Maak een team of vraag toegang aan.</div>';
   const invite=new URL(location.href).searchParams.get('team');if(isUuid(invite))$('joinTeamId').value=invite;
   const saved=selectedTeamName();if(autoOpen&&saved&&active.some(m=>m.team_id===saved)&&teamsById[saved])await openTeam(saved);
@@ -76,7 +102,8 @@ async function joinTeam(e){e.preventDefault();const btn=e.submitter;busy(btn,tru
 }catch(error){friendlyError(error);}finally{busy(btn,false);}}
 async function openTeam(teamId){
  try{
-  team=withResult(await client.from('ws_teams').select('id,name').eq('id',teamId).single());
+  team=withResult(await client.from('ws_teams').select('id,name,created_by,deleting_at').eq('id',teamId).single());
+  if(team.deleting_at)throw new Error('Dit team wordt verwijderd. De maker kan de verwijdering afronden.');
   localStorage.setItem('ws_team_id',teamId);
   await loadMembers();
   if(!ownMembership()||ownMembership().status!=='active')throw new Error('Je hebt nog geen toegang tot dit team.');
@@ -103,7 +130,37 @@ function renderTasks(){
 function tab(target){page=target;['tasks','team','backup'].forEach(name=>{show(name==='tasks'?'tasksPage':name==='team'?'teamPage':'backupPage',name===target);document.querySelector(`[data-tab="${name}"]`).classList.toggle('active',name===target);});if(target==='team')renderTeam().catch(friendlyError);}
 async function renderTeam(){if(!team)return;await loadMembers();const me=ownMembership();currentRole=me?.role||'member';
  const url=new URL(location.origin+location.pathname);url.searchParams.set('team',team.id);$('inviteLink').value=url.href;$('teamCode').textContent=team.id;
+ show('deleteTeamPanel',team.created_by===user.id);
  $('memberList').innerHTML=members.map(m=>`<div class="member-row"><div><h3>${escapeHTML(m.display_name)}${m.user_id===user.id?' (jij)':''}</h3><p>${m.role==='admin'?'Beheerder':'Medewerker'} · ${m.status==='active'?'Actief':'Wacht op goedkeuring'}</p></div>${isAdmin()&&m.status==='pending'?`<div class="row-between"><button type="button" class="button primary" data-approve="${escapeHTML(m.user_id)}">Goedkeuren</button><button type="button" class="button danger" data-reject="${escapeHTML(m.user_id)}">Afwijzen</button></div>`:''}</div>`).join('');
+}
+// Definitief verwijderen: eerst het team blokkeren, dan alle Storage-objecten via
+// de Storage-API verwijderen, vervolgens de SQL-records transactioneel opruimen.
+// Mislukt de procedure tussendoor, dan kan de maker hem vanuit Teamkeuze hervatten.
+async function removeTeam(teamId){
+ const button=$('deleteTeamBtn');
+ try{
+  const t=withResult(await client.from('ws_teams').select('id,name,created_by,deleting_at').eq('id',teamId).single());
+  if(t.created_by!==user?.id)throw new Error('Alleen de maker van het team mag het definitief verwijderen.');
+  const entered=prompt(`Definitief verwijderen van team “${t.name}”?\n\nDownload EERST een back-up via het tabblad Back-up.\n\nTyp de volledige teamnaam om verder te gaan:`);
+  if(entered===null)return;
+  if(entered.trim()!==t.name){toast('Teamnaam komt niet overeen. Er is niets verwijderd.');return;}
+  if(!confirm(`Alle taken, checklists, teamleden en foto's van “${t.name}” worden DEFINITIEF verwijderd voor iedereen. Dit kan niet ongedaan worden gemaakt. Doorgaan?`))return;
+  busy(button,true,'Team verwijderen…');
+  await withResult(await client.rpc('ws_begin_delete_team',{p_team:t.id}));
+  let loops=0;
+  while(true){
+   if(++loops>2000)throw new Error('De opruimactie is onderbroken: te veel bestanden. Probeer opnieuw.');
+   const paths=withResult(await client.rpc('ws_next_delete_photo_paths',{p_team:t.id,p_limit:100}));
+   if(!Array.isArray(paths)||paths.length===0)break;
+   await withResult(await client.storage.from(BUCKET).remove(paths));
+  }
+  await withResult(await client.rpc('ws_finish_delete_team',{p_team:t.id}));
+  if(team?.id===t.id){team=null;members=[];tasks=[];photos=[];activeTaskId=null;}
+  if(selectedTeamName()===t.id)localStorage.removeItem('ws_team_id');
+  toast('Team met taken en foto’s definitief verwijderd');
+  await workspace(false);
+ }catch(error){friendlyError(error);await workspace(false);}
+ finally{busy(button,false);}
 }
 async function reviewMember(id,approve){if(!confirm(approve?'Deze medewerker toegang geven tot alle teamtaken?':'Deze aanvraag afwijzen?'))return;try{
  await withResult(await client.rpc('ws_review_member',{p_team:team.id,p_user:id,p_approve:approve}));toast(approve?'Medewerker toegelaten':'Aanvraag afgewezen');await renderTeam();
@@ -218,7 +275,8 @@ function attachEvents(){
  $('authForm').addEventListener('submit',submitAuth);$('switchAuth').addEventListener('click',toggleAuth);$('authName').closest('label').classList.add('hidden');
  $('signoutBtn').addEventListener('click',async()=>{try{if(client)await client.auth.signOut();user=null;team=null;showAuth();}catch(error){friendlyError(error);}});
  $('newTeamForm').addEventListener('submit',makeTeam);$('joinTeamForm').addEventListener('submit',joinTeam);
- $('teamList').addEventListener('click',e=>{const b=e.target.closest('[data-open-team]');if(b)openTeam(b.dataset.openTeam);});
+ $('teamList').addEventListener('click',e=>{const b=e.target.closest('[data-open-team]');if(b)openTeam(b.dataset.openTeam);const d=e.target.closest('[data-resume-delete]');if(d)removeTeam(d.dataset.resumeDelete);});
+ $('deleteTeamBtn').addEventListener('click',()=>{if(team)removeTeam(team.id);});
  $('changeTeam').addEventListener('click',()=>workspace(false));$('createTask').addEventListener('click',()=>editTask());$('refreshTasks').addEventListener('click',loadTasks);
  $('taskSearch').addEventListener('input',renderTasks);$('taskScope').addEventListener('change',renderTasks);$('taskStatus').addEventListener('change',renderTasks);
  $('taskList').addEventListener('click',e=>{const b=e.target.closest('[data-task]');if(b)openTask(b.dataset.task);});
