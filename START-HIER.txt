@@ -1,0 +1,132 @@
+WERKSTANDAARD TEAM – INSTALLATIEHANDLEIDING (VERSIE 2)
+=====================================================
+
+WAT IS NIEUW?
+Iedere medewerker ziet dezelfde onderhoudstaken en werkinstructies op iPhone en
+computer. Beheerders maken taken, wijzen ze toe, bekijken openstaande aanvragen
+en keuren collega's goed. Uitvoerders vinken hun eigen taken af en delen foto's.
+
+BELANGRIJK VOORDAT JE BEGINT
+--------------------------------
+1. Maak in de OUDE WerkStandaard-app op je iPhone eerst een back-up:
+   Back-up > Download mijn back-up. Bewaar het JSON-bestand in Bestanden.
+2. Vervang je oude app niet voordat je die back-up veilig hebt opgeslagen.
+3. Voor online teamgebruik heb je internet nodig. Zonder verbinding kun je in
+   deze eerste teamversie niet werken of synchroniseren.
+4. Vraag je werkgever toestemming voordat je bedrijfsfoto's, namen of
+   werkinstructies uploadt naar een externe cloud. Deze hobby-/proefopzet is
+   nog geen bedrijfsbreed goedgekeurd onderhouds- of veiligheidssysteem.
+
+STAP 1: MAAK GRATIS EEN SUPABASE-PROJECT
+----------------------------------------
+1. Ga op je computer naar https://supabase.com/ en meld je gratis aan.
+2. Maak een nieuw project in het gratis Free-plan. Bewaar je databasewachtwoord.
+3. Wacht tot het project gereed is en open "SQL Editor".
+4. Kopieer de volledige inhoud van "supabase-setup.sql" in SQL Editor.
+5. Klik "Run". De vier tabellen, beveiligingsregels en een PRIVATE foto-bucket
+   worden dan aangemaakt.
+6. Controleer in "Table Editor" dat je tabellen ziet die met ws_ beginnen.
+   Controleer in "Storage" de privé bucket werkstandaard-team-fotos.
+
+STAP 2: VERBIND JE APP MET SUPABASE
+----------------------------------
+1. Ga naar Supabase > Project Settings > API (soms "API Keys").
+2. Zoek je Project URL, bijvoorbeeld https://abcxyz.supabase.co.
+3. Zoek de PUBLIC/PUBLISHABLE key (sb_publishable_... of oudere anon key).
+4. Open config.js in een teksteditor en vul tussen de aanhalingstekens in:
+   supabaseUrl: 'https://jouw-project.supabase.co',
+   publishableKey: 'jouw-publishable-key'
+5. Opslaan. Dit is de enige aanpassing die je in de code hoeft te doen.
+   LET OP: gebruik NOOIT de service_role, secret key of databasewachtwoord.
+   De publishable key is bedoeld om in een web-app te staan. Je teamgegevens
+   worden beveiligd met de bijgeleverde RLS-databaseregels.
+
+STAP 3: ZET DE NIEUWE VERSIE OP GITHUB PAGES
+-------------------------------------------
+1. Ga naar https://github.com/ en open een nieuwe PUBLIC repository, liefst
+   "werkstandaard-team". Zo blijft je oude app apart bestaan.
+2. Upload ALLE losse bestanden uit deze ZIP naar de HOOFDMAP van de repository.
+   Dus index.html, app.js, style.css, config.js, sw.js, manifest.webmanifest,
+   de drie icon-*.png bestanden en eventueel documentatie.
+3. Ga naar Settings > Pages > Build and deployment > Deploy from a branch.
+4. Kies branch main en map /(root) en klik Save.
+5. Je nieuwe webadres wordt iets als:
+   https://jouw-gebruikersnaam.github.io/werkstandaard-team/
+6. Open dat adres in Safari op je iPhone, tik op Deel > Zet op beginscherm.
+7. Gebruik op de computer hetzelfde webadres.
+
+STAP 4: STEL JE INLOGADRES IN BIJ SUPABASE
+-----------------------------------------
+1. Open Supabase > Authentication > URL Configuration.
+2. Zet "Site URL" op het GitHub Pages-webadres van de NIEUWE app.
+3. Voeg dat exacte adres ook toe onder "Redirect URLs". Voorbeeld:
+   https://jouw-gebruikersnaam.github.io/werkstandaard-team/**
+4. Controleer dat e-mailbevestiging werkt. Op de gratis maildienst kunnen
+   verzendlimieten gelden; stel geen bedrijfsmatige massale uitnodigingen in.
+
+STAP 5: MAAK EEN TEAM EN NODIG COLLEGA'S UIT
+--------------------------------------------
+1. Open de app, tik "Registreren" en maak jouw account.
+2. Bevestig zo nodig je e-mailadres en log in.
+3. Maak je eerste team, bijvoorbeeld "Technische Dienst".
+4. Kies in de onderste navigatie "Team" en kopieer de uitnodigingslink.
+5. Collega opent dezelfde link, registreert en vraagt toegang.
+6. Jij keurt de aanvraag goed in "Team".
+7. Ga naar Taken > Onderhoudstaak maken, kies bij "Toewijzen aan" een collega.
+8. Collega ziet deze taak na inloggen. De status en checklist worden gedeeld.
+   De app controleert elke 30 seconden op wijzigingen wanneer deze open is.
+
+STAP 6: ZET JE OUDE TAKEN EN FOTO'S OVER
+---------------------------------------
+1. Open de NIEUWE team-app op je iPhone als beheerder.
+2. Kies "Back-up" > "Kies oude back-up".
+3. Selecteer de JSON-back-up uit de oude app.
+4. Foto's worden gecomprimeerd, daarna in privé opslag geüpload.
+5. Controleer ook op je COMPUTER of alle taken en foto's zichtbaar zijn.
+6. Importeren kan tijd kosten bij veel foto's. Hou de app open en zorg voor
+   een goede internetverbinding. Mislukte foto's worden na afloop gemeld.
+7. Alle bestaande taken met exact dezelfde titel + machine worden overgeslagen
+   om dubbele imports te beperken.
+
+WAT IS GRATIS EN WAT ZIJN DE BEPERKINGEN?
+---------------------------------------
+- GitHub Pages is gratis voor openbare repositories.
+- Supabase Free heeft momenteel o.a. 500 MB database en 1 GB foto-opslag,
+  met andere gebruiks- en dataverkeerlimieten. Gratis projecten kunnen
+  na een periode van inactiviteit worden gepauzeerd.
+- De broncode (ook config.js) is PUBLIEK, maar persoonlijke taken en foto's
+  zitten in de database en PRIVATE opslag achter RLS-toegangsregels.
+- Je moet zelf een Supabase-account maken en je publiceerbare sleutel instellen.
+  ChatGPT Plus is geen hosting, centrale database of appstore-account.
+- Checkliststatus is per TAAK gedeeld, niet per afzonderlijke terugkerende
+  uitvoering. Voor afzonderlijke dag-/weekruns is een latere uitbreiding nodig.
+- Er zijn geen pushnotificaties, volledige auditlogs, offline synchronisatie
+  of automatisch terugkerende taakplanning in deze eerste teamversie.
+- Voor serieuze inzet: test toegangsrechten, regel back-ups, laat procedures
+  goedkeuren en zorg dat ook privacy- en bedrijfsbeleid kloppen.
+
+PROBLEMEN?
+----------
+"Verbind de app met een database": config.js nog niet ingevuld of fout.
+"Teamcode onbekend": controleer of je de volledige code hebt gekopieerd.
+"Wacht op goedkeuring": beheerder moet toegang verlenen onder Team.
+"Geen toegang" / "permission denied": SQL-script niet volledig uitgevoerd
+of je bent nog geen actief teamlid.
+"Foto niet zichtbaar": controleer private Storage policies, internet en of
+je echt met een goedgekeurd account in hetzelfde team bent ingelogd.
+"Verouderde versie": open GitHub Pages opnieuw, laad opnieuw in Safari.
+"E-mail komt niet": check spam en Supabase Authentication-instellingen.
+
+BEVEILIGING
+-----------
+Zet NOOIT bedrijfsgevoelige inhoud in de openbare GitHub-repository.
+Gebruik een sterk wachtwoord. Beheerder: keur uitsluitend bekenden goed.
+De publieke project-key is geen geheim; de secret/service_role key WEL.
+De privé fotolinks zijn tijdelijk geldig. Deel ze niet buiten je team.
+
+REFERENTIES (DOCS)
+------------------
+https://www.ezfactory.com/
+https://supabase.com/docs/guides/storage/security/access-control
+https://supabase.com/docs/guides/platform/billing-on-supabase
+https://docs.github.com/en/pages/getting-started-with-github-pages
