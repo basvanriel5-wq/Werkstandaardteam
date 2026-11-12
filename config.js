@@ -2,6 +2,6 @@
 // PUBLISHABLE key in. De publishable key mag publiek in de frontend staan.
 // PLAATS HIER NOOIT de secret key of service_role key!
 window.WERKSTANDAARD_CONFIG = {
-  supabaseUrl: '',
-  publishableKey: ''
+  supabaseUrl: 'https://lriizheiufcqvdupeesr.supabase.co',
+  publishableKey: 'sb_publishable_BvEIfxrFgp829bPN2fMeWg_DNtAYbHF'
 };
